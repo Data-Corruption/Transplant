@@ -39,9 +39,6 @@ umask 077
 # set by build.sh before uploading
 APP_NAME="<APP_NAME>"
 RELEASE_URL="<RELEASE_URL>"
-SERVICE="<SERVICE>"
-SERVICE_DESC="<SERVICE_DESC>"
-SERVICE_ARGS="<SERVICE_ARGS>"
 # cosign keyless identity of the CI workflow that signed this release
 CERT_IDENTITY="<CERT_IDENTITY>"
 OIDC_ISSUER="<OIDC_ISSUER>"
@@ -75,27 +72,15 @@ LOGS_DIR="$STORAGE_DIR/logs"
 MAINTENANCE_LOG="$LOGS_DIR/maintenance.log"
 RELEASE_URL_FILE="$MAINTENANCE_DIR/release-url"
 
-SERVICE_NAME="$APP_NAME.service"
-SERVICE_FILE="$HOME/.config/systemd/user/$SERVICE_NAME"
-SERVICE_WANTS_LINK="$HOME/.config/systemd/user/default.target.wants/$SERVICE_NAME"
-SERVICE_READY_TIMEOUT_SECONDS=90
 LOCK_TIMEOUT_SECONDS=300
 
-USER_NAME="${USER:-$(id -un)}" # $USER is not always exported
 USER_ID=$(id -u)
 
 # Globals used by rollback/cleanup --------------------------------------------
 temp_dir=""
 old_app_bin=""
-old_service_file=""
 app_bin_exists=0
 binary_changed=0
-fresh_install=1
-service_exists=0
-service_was_enabled=0
-service_was_active=0
-service_touched=0
-default_port=""
 migration_nonce=""
 migration_started=0
 state_transition_written=0
@@ -109,7 +94,6 @@ state_changed_at=""
 state_epoch=""
 transaction_phase=""
 transaction_epoch=""
-recovering_transition=0
 cached_installer_exists=0
 cached_bundle_exists=0
 cached_installer_changed=0
@@ -558,7 +542,6 @@ run_uninstall() {
 
 rollback() {
     rb=0
-    restart_old_service=0
     if [ "$binary_changed" -eq 1 ]; then
         printf 'Restoring previous installation ...\n'
         if [ "$app_bin_exists" -eq 1 ] && [ -n "$old_app_bin" ] && [ -s "$old_app_bin" ]; then
@@ -679,7 +662,7 @@ if [ "$MODE" = "uninstall" ]; then
     exit 0
 fi
 
-[ -f "$APP_BIN" ] && app_bin_exists=1 && fresh_install=0
+[ -f "$APP_BIN" ] && app_bin_exists=1
 
 load_state
 if [ "$MODE" = "update" ]; then
@@ -703,7 +686,6 @@ else
             # install/update. Preserve the installation lifetime.
             transaction_phase=$state_phase
             transaction_epoch=$state_epoch
-            recovering_transition=1
             ;;
         uninstalling)
             fatalf 'Uninstall is already in progress; run the cached installer with --uninstall to finish it'
@@ -906,7 +888,7 @@ candidate_version=$(printf '%s' "$candidate_build_vars" | sed -n 's/.*"version":
     fatalf 'Staged candidate version %s does not match signed version %s' "$candidate_version" "$pinned_version"
 
 # Backup (for rollback) -------------------------------------------------------
-if [ -f "$APP_BIN" ] || [ "$service_exists" -eq 1 ]; then
+if [ -f "$APP_BIN" ]; then
     printf 'Backing up current installation ...\n'
 fi
 
