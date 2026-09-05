@@ -4,7 +4,7 @@
 // translated to pure Go (wasm2go), so there is no cgo and cross-compiling
 // stays a plain GOOS/GOARCH matter. v0.35.3 is a hard minimum: earlier versions
 // corrupt data under concurrent WAL access on Windows (upstream issue 404). See
-// docs/content/docs/architecture.md before changing the version.
+// docs/ARCHITECTURE.md before changing the version.
 //
 // The exposed API is plain database/sql, which keeps the driver swappable
 // (e.g. for mattn/go-sqlite3 if you'd rather take the cgo toolchain cost);

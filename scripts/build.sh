@@ -44,7 +44,7 @@
 # Mirrors: there is no build mode for mirrors. Signed release artifacts are
 # portable - copy the release bucket byte-for-byte and install with
 # APP_RELEASE_URL pointing at the copy; all cosign signatures stay valid.
-# See docs/content/docs/getting-started/mirror.md.
+# See https://sproutcli.dev/docs/getting-started/mirror/.
 #
 # Dependencies: go, gcc (only when tests run: go test -race needs cgo), and
 # curl. The build is pure Go (no cgo), so Linux release binaries are fully

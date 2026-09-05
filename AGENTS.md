@@ -5,12 +5,17 @@ anything; read the linked docs before touching the things they cover.
 
 ## What this is
 
-A per-user Go CLI application that may also run a background worker, a local
-HTTPS dashboard, and signed self-updates. Every CLI command (the service
-included) is its own process built around one `App`; processes share SQLite in
-WAL mode, rotating logs, and a small lock/state protocol in the control
-directory. Installers on Linux (`install.sh`, POSIX sh) and Windows
-(`install.ps1`) own install, update, and uninstall as transactions.
+Transplant is a CLI-only Sprout fork that finalizes a separate fresh Sprout
+checkout. The default action is an interactive wizard in `internal/transplant`;
+`--yes` and answer flags support scripts. It uses the target tree's own cutter,
+validates its JSON feature contract before editing, and never stores wizard
+answers in SQLite. Development and the wizard are Linux/WSL only. Windows
+binaries retain installer, update, config, and uninstall behavior and explain
+why the wizard needs WSL.
+
+The inherited `App` still owns per-user SQLite, logs, lifecycle locks, and signed
+manual updates. Background checks default to disabled. Installers on Linux and
+Windows own install, update, and uninstall as transactions.
 
 If `scripts/cut` exists in this tree, this is the upstream Sprout template. If
 it doesn't, this is a finalized fork: the project is ordinary Go and shell that
@@ -23,34 +28,31 @@ does not apply.
 |------|------|
 | `cmd/main.go` | Process entry, global flags, signal handling, final error print |
 | `internal/app` | `App` composition root, cleanup stack, update checks, maintenance job admission |
-| `internal/app/commands` | CLI commands, service coordinator, `runWorker` (the worker customization point) |
+| `internal/app/commands` | Update, config, and uninstall commands |
+| `internal/transplant` | Wizard flags, prompts, preflight, cutter contract, file edits, Git and verification |
 | `internal/maintenance` | Lifecycle guard, durable `state.json`, detached installer launch, service singleton lock |
 | `internal/layout` | Every filesystem path and its permission policy; nothing else resolves paths |
 | `internal/platform/database` | SQLite open/pool, ordered migrations, focused accessors per table |
-| `internal/platform/http` | Listeners, router, auth middleware, sessions, CSRF/Origin guard, settings handlers |
-| `internal/platform/secrets` | TLS material generation and storage |
 | `internal/platform/release` | Reads the root `version` pointer from a release host |
-| `internal/types` | Configuration shape and the permission bitmask |
-| `internal/ui` | Embedded templates, vanilla JS modules, Tailwind/DaisyUI source |
+| `internal/types` | Application configuration and defaults |
 | `internal/build` | Values baked in at build time |
 | `pkg/` | Small reusable packages: locks, rotating logs, HTTP helpers, crypto, prompts, sd_notify |
 | `scripts/build.sh`, `scripts/build/` | Editable project values, local builds, remote publication |
 | `scripts/vendor.sh` | Pinned versions and SHA-256s for every third-party tool; the only fetcher |
 | `scripts/install.sh`, `scripts/install.ps1` | The installers; templated by `build.sh` |
 | `scripts/test.sh`, `scripts/test-*` | Test entrypoints and harnesses |
-| `internal/cut`, `cmd/cut`, `cmd/cutmatrix` | Upstream only: the fence cutter and the 11-variant matrix; deleted by finalize |
-| `docs/content/docs/` | Reader-facing documentation (Hugo site) |
+| `docs/ARCHITECTURE.md` | Wizard flow, application architecture, and verification |
 | `docs/MAINTENANCE.md` | The install/update/uninstall protocol, precisely |
 
 ## Documents of record
 
-- `docs/content/docs/architecture.md`: how the processes, database, service,
-  dashboard, updates, and releases fit together. Start here.
+- `docs/ARCHITECTURE.md`: how the wizard, application, updates, and verification
+  fit together. Start here.
 - `docs/MAINTENANCE.md`: paths, state machine, locks, drain order, detached
   jobs. Read it before changing anything in `internal/maintenance`,
   `internal/layout`, or either installer.
-- `docs/content/docs/getting-started/release.md`: publication ordering,
-  resume, retention, signing identity.
+- [Sprout's release guide](https://sproutcli.dev/docs/getting-started/release/):
+  publication ordering, resume, retention, signing identity.
 
 When a document and the code disagree, the code is right and the document is
 stale. Fix the document in the same change.
@@ -129,30 +131,35 @@ gofmt -l ./cmd ./internal ./pkg && go vet ./... && GOOS=windows go vet ./...
 Slower harnesses (Linux only): `./scripts/test.sh -release` runs the
 publication state machine against a local rclone backend; `-e2e` runs the
 install/update/uninstall lifecycle across distros in Incus containers, with
-per-case logs under `out/lifecycle-e2e-logs/<run>/`. See `architecture.md` for
+per-case logs under `out/lifecycle-e2e-logs/<run>/`. See `docs/ARCHITECTURE.md` for
 what each covers.
 
-Third-party tools (Tailwind, esbuild, cosign, rclone, shellcheck, goimports,
-Hugo) are pinned by version and SHA-256 in `scripts/vendor.sh` and fetched into the
-gitignored `tools/`. Never depend on `tools/` contents directly.
+Third-party tools are pinned by version and SHA-256 in `scripts/vendor.sh` and
+fetched into the gitignored `tools/`. Never depend on `tools/` contents directly.
 
-Generated and ignored: `internal/ui/assets/{css/output.css,js/output.js,manifest.json}`,
-`out/`, `tools/`, `docs/out/`. Edit sources under `internal/ui/assets/css/input.css`
-and `internal/ui/assets/js/src/`.
+Generated and ignored: `out/` and `tools/`. This repository has no docs site;
+`docs/` contains only the architecture and maintenance notes.
 
 ## Where to add things
 
-- CLI command: constructor in `internal/app/commands`, registered in
-  `commands.go`. A test scans the AST and fails if you forget to register it.
-- Worker: replace the body of `runWorker` in `internal/app/commands/worker.go`.
-  If you remove the hash example, `scripts/test-lifecycle-e2e.sh` already has
-  `TEST_EXAMPLE_HASH=false` in forks.
-- Durable state: a migration step, then accessors beside the owning subsystem.
-- Dashboard route: a handler package under `internal/platform/http/router`,
-  mounted in `router.go`, with an explicit permission on writes.
-- Permission: `internal/types/perms.go`.
-- Project values (name, release URL, contact, ports): the block at the top of
-  `scripts/build.sh`.
+- Wizard behavior: `internal/transplant`; keep dependency expansion and source
+  rewriting in the target cutter. Every new question needs a flag.
+- CLI subcommand: constructor in `internal/app/commands`, registered in
+  `commands.go`. An AST test checks registration.
+- Durable application state: a migration and focused database accessors. Wizard
+  answers are deliberately not durable application state.
+- Project values: the block at the top of `scripts/build.sh`.
+
+For wizard changes, also run the real-checkout canary (Linux):
+
+```sh
+TRANSPLANT_SPROUT=../Sprout go test ./internal/transplant \
+  -run '^TestSproutCompatibility$' -v -count=1 -timeout=25m
+```
+
+It copies current source from that checkout, including pending edits, into fresh
+temporary repositories. CI clones Sprout main and requires this check before a
+Transplant release. Land compatible Sprout contract changes upstream first.
 
 ## Style
 

@@ -167,12 +167,16 @@ func TestUpdatePreferencesAreExplicitAndIndependent(t *testing.T) {
 		return cfg
 	}
 	cfg := run("--notify=false")
-	if cfg.UpdateNotifications || !cfg.BackgroundUpdateChecks {
+	if cfg.UpdateNotifications || cfg.BackgroundUpdateChecks {
 		t.Fatalf("hiding notices changed scheduling: %+v", cfg)
 	}
 	cfg = run("--notify=false")
 	if cfg.UpdateNotifications {
 		t.Fatal("repeating --notify=false toggled notices on")
+	}
+	cfg = run("--background=true")
+	if !cfg.BackgroundUpdateChecks || cfg.UpdateNotifications {
+		t.Fatalf("enabling background checks changed notices: %+v", cfg)
 	}
 	cfg = run("--background=false")
 	if cfg.BackgroundUpdateChecks {

@@ -33,7 +33,7 @@
 # releases can require a newer kernel.
 #
 # Distro images map onto the supported-distro families (see the distro notes in
-# docs/content/docs/getting-started/operate.md):
+# https://sproutcli.dev/docs/getting-started/operate/):
 #   debian  -> Debian, MX Linux, Raspberry Pi OS
 #   ubuntu  -> Ubuntu, Mint, Pop!_OS, Zorin
 #   fedora  -> Fedora (ostree variants: see immutable fake)

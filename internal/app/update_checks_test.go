@@ -108,6 +108,14 @@ func newUpdateTestApp(t *testing.T, source updateTestReleaseSource) *App {
 		db.Close()
 		logger.Close()
 	})
+	// These tests exercise the opt-in periodic checker. Transplant's fresh
+	// installations leave it disabled, unlike the original Sprout defaults.
+	if _, err := config.Update(db, func(cfg *types.Configuration) error {
+		cfg.BackgroundUpdateChecks = true
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	return &App{
 		DB:            db,
 		Log:           logger,

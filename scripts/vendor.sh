@@ -25,7 +25,6 @@
 # Deliberately not owned here:
 #   - GitHub Actions in `uses:` clauses. Those must be literal commit SHAs; no
 #     expression can supply them, so they live directly in the workflow files.
-#   - docs/go.mod, which is Go's own pin for the Hugo theme module.
 #   - The <COSIGN_*> placeholders in install.sh and install.ps1. Those are
 #     standalone `curl | sh` artifacts that cannot source anything; the values
 #     below are rendered into them by render_installer at build time.

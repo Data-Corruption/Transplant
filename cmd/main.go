@@ -11,6 +11,7 @@ import (
 	"github.com/Data-Corruption/Transplant/internal/app"
 	"github.com/Data-Corruption/Transplant/internal/app/commands"
 	"github.com/Data-Corruption/Transplant/internal/build"
+	"github.com/Data-Corruption/Transplant/internal/transplant"
 	"github.com/Data-Corruption/Transplant/pkg/xlog"
 
 	"github.com/urfave/cli/v3"
@@ -42,8 +43,8 @@ func runMain() int {
 	rootCommand := &cli.Command{
 		Name:    application.BuildInfo().Name,
 		Version: application.BuildInfo().Version,
-		Usage:   "Sprout is a template for building Go services / cli apps.",
-		Flags: []cli.Flag{
+		Usage:   "plant a Sprout",
+		Flags: append(transplant.Flags(), []cli.Flag{
 			&cli.StringFlag{
 				Name:    "log",
 				Aliases: []string{"l"},
@@ -61,11 +62,16 @@ func runMain() int {
 				Hidden: true,
 				Usage:  "print build variables and exit",
 			},
-		},
+		}...),
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 			if cmd.Bool("build-vars") {
 				fmt.Println(application.BuildInfo().PrintJSON())
 				os.Exit(0)
+			}
+			if cmd.Args().Len() == 0 && !cmd.Bool("migrate") {
+				if err := transplant.CheckPlatform(); err != nil {
+					return ctx, err
+				}
 			}
 			ctx, err := application.Init(ctx, cmd)
 			if err != nil || cmd.Bool("migrate") {
@@ -84,10 +90,14 @@ func runMain() int {
 			return ctx, nil
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			application.Log.Info("Ran with no arguments.")
-			fmt.Printf("%s version %s\n", application.BuildInfo().Name, application.BuildInfo().Version)
-			fmt.Printf("Use '%s help' to see available commands.\n", application.BuildInfo().Name)
-			return nil
+			if cmd.Bool("migrate") {
+				return nil
+			}
+			if cmd.Args().Len() != 0 {
+				return fmt.Errorf("don't know %q; run transplant --help to see the options", cmd.Args().First())
+			}
+			wizard := &transplant.Wizard{}
+			return wizard.Run(ctx, transplant.FromCommand(cmd))
 		},
 		Commands: commands.All(application),
 	}

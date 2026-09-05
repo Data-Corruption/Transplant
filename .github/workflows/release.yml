@@ -215,6 +215,27 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  transplant-compatibility:
+    needs: ci-gate
+    if: ${{ needs.ci-gate.outputs.enabled == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+      - name: Get the current Sprout template
+        run: git clone --depth 1 https://github.com/Data-Corruption/Sprout.git "$RUNNER_TEMP/sprout-source"
+      - name: Transplant, test, and build three source shapes
+        env:
+          TRANSPLANT_SPROUT: ${{ runner.temp }}/sprout-source
+        run: go test ./internal/transplant -run '^TestSproutCompatibility$' -v -count=1 -timeout=25m
+
   release:
     # Pull requests never publish. Template forks must also opt in explicitly
     # by setting CI_ENABLED=true after R2 secrets are configured.
@@ -223,6 +244,7 @@ jobs:
       - ci-gate
       - windows-test
       - lifecycle-e2e
+      - transplant-compatibility
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:

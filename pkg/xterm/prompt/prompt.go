@@ -1,6 +1,7 @@
 // Package prompt provides functions for asking interactive questions in the terminal.
 //
 // Available functions:
+//   - [NewReader] Keeps buffered answers across a cancelable prompt sequence.
 //   - [Int]    Re-prompts until the user enters any signed integer.
 //   - [Uint]   Re-prompts until the user enters a non-negative integer.
 //   - [String] Reads a single line of text (empty string allowed).

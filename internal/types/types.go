@@ -23,9 +23,10 @@ type Configuration struct {
 func DefaultConfig(buildInfo build.BuildInfo) Configuration {
 
 	return Configuration{
-		LogLevel:               buildInfo.DefaultLogLevel,
-		UpdateNotifications:    true,
-		BackgroundUpdateChecks: true,
+		LogLevel:            buildInfo.DefaultLogLevel,
+		UpdateNotifications: true,
+		// A setup wizard runs infrequently; explicit `transplant update` is enough.
+		BackgroundUpdateChecks: false,
 		LastUpdateCheck:        time.Time{},
 	}
 }

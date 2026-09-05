@@ -15,7 +15,7 @@
 # a byte-for-byte mirror of the official release artifacts. All cosign
 # signatures remain valid (they are URL-independent). The effective source is
 # persisted for later checks and updates, including unattended updates.
-# See docs/content/docs/getting-started/mirror.md.
+# See https://sproutcli.dev/docs/getting-started/mirror/.
 #
 # Testing: APP_SKIP_VERIFY=true skips cosign signature verification (the plain
 # sha256 check still runs). Only for local/matrix installer testing against
