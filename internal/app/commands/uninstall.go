@@ -3,10 +3,11 @@ package commands
 import (
 	"context"
 	"fmt"
-	"sprout/internal/app"
-	"sprout/internal/maintenance"
 
-	"sprout/pkg/xterm/prompt"
+	"github.com/Data-Corruption/Transplant/internal/app"
+	"github.com/Data-Corruption/Transplant/internal/maintenance"
+
+	"github.com/Data-Corruption/Transplant/pkg/xterm/prompt"
 
 	"github.com/urfave/cli/v3"
 )

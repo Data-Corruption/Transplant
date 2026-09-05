@@ -5,11 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"sprout/internal/build"
-	"sprout/internal/types"
-	"sprout/pkg/migrator"
 
-	"sprout/pkg/xlog"
+	"github.com/Data-Corruption/Transplant/internal/build"
+	"github.com/Data-Corruption/Transplant/internal/types"
+	"github.com/Data-Corruption/Transplant/pkg/migrator"
+
+	"github.com/Data-Corruption/Transplant/pkg/xlog"
 )
 
 // MigrationPolicy controls whether opening a database may change its schema.
@@ -41,7 +42,6 @@ func newMigrator(buildInfo build.BuildInfo) *migrator.Migrator {
 			return fmt.Errorf("failed to create config table: %w", err)
 		}
 
-		// --- BEGIN update ---
 		// A single renewable lease coordinates periodic update checks across
 		// concurrent processes. Manual checks do not use this table.
 		if _, err := tx.ExecContext(ctx, `
@@ -53,45 +53,6 @@ func newMigrator(buildInfo build.BuildInfo) *migrator.Migrator {
 		`); err != nil {
 			return fmt.Errorf("failed to create update-check lease table: %w", err)
 		}
-		// --- END update ---
-
-		// --- BEGIN service.https ---
-		// UI sessions, keyed by SHA256 of the cookie token. Living in the DB
-		// (not memory) makes revocation work across processes (CLI vs service)
-		// and lets sessions survive restarts without any config handoff. Just
-		// in general keeps things simple and predictable.
-		if _, err := tx.ExecContext(ctx, `
-			CREATE TABLE sessions (
-				token_hash TEXT PRIMARY KEY,
-				expiry     INTEGER NOT NULL, -- unix seconds
-				perms      INTEGER NOT NULL, -- types.Perm bitmask (as int64)
-				username   TEXT NOT NULL     -- credential username that minted it
-			) STRICT;
-		`); err != nil {
-			return fmt.Errorf("failed to create sessions table: %w", err)
-		}
-		// --- END service.https ---
-
-		// --- BEGIN service ---
-		// Small SQLite IPC example used by `app hash` and the service worker.
-		if _, err := tx.ExecContext(ctx, `
-			CREATE TABLE hash_requests (
-				id           INTEGER PRIMARY KEY,
-				input        TEXT NOT NULL,
-				result       TEXT,
-				created_at   INTEGER NOT NULL, -- unix milliseconds
-				expires_at   INTEGER NOT NULL, -- unix milliseconds
-				completed_at INTEGER,          -- unix milliseconds
-				CHECK (length(CAST(input AS BLOB)) BETWEEN 1 AND 4096)
-			) STRICT;
-
-			CREATE INDEX hash_requests_pending
-			ON hash_requests (id)
-			WHERE result IS NULL;
-		`); err != nil {
-			return fmt.Errorf("failed to create hash requests table: %w", err)
-		}
-		// --- END service ---
 
 		// Store config with default values
 		cfg := types.DefaultConfig(buildInfo)

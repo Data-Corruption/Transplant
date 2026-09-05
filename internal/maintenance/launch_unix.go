@@ -129,9 +129,6 @@ func startPlatformJob(ctx context.Context, job launchJob, runnerPath string) (bo
 
 func useSystemdMaintenanceLauncher() bool {
 	serviceCapable := false
-	// --- BEGIN service ---
-	serviceCapable = true
-	// --- END service ---
 	return serviceCapable && os.Getenv("NOTIFY_SOCKET") != ""
 }
 

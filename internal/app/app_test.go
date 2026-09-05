@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"sprout/internal/build"
-	"sprout/pkg/xlog"
+	"github.com/Data-Corruption/Transplant/internal/build"
+	"github.com/Data-Corruption/Transplant/pkg/xlog"
 )
 
 func TestCloseJoinsErrorsInReverseOrderAndCachesResult(t *testing.T) {

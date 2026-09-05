@@ -67,17 +67,11 @@ SERVICE_DEFAULT_PORT="0" # fallback for after cut
 # Template adopters normally change values in this section and leave the build
 # implementation alone.
 
-APP_NAME="sprout"
-RELEASE_URL="https://releases.sproutcli.dev/"
+APP_NAME="transplant"
+RELEASE_URL="https://releases.sproutcli.dev/transplant/"
 CONTACT_URL="https://sproutcli.dev/"
 DEFAULT_LOG_LEVEL="warn"
 
-# --- BEGIN service ---
-SERVICE_DESC="Sprout daemon"
-# --- END service ---
-# --- BEGIN service.https ---
-SERVICE_DEFAULT_PORT="8484"
-# --- END service.https ---
 
 # Pinned build inputs ---------------------------------------------------------
 #
@@ -127,10 +121,6 @@ RELEASE_TAG_ONLY=false
 
 SERVICE_ENABLED="false"
 SERVICE_ARGS=""
-# --- BEGIN service ---
-SERVICE_ENABLED="true"
-SERVICE_ARGS="service run"
-# --- END service ---
 
 # cosign keyless identity: only releases signed by this exact workflow on main
 # verify. The subject includes the repository, so it is unforgeable without push
@@ -186,10 +176,6 @@ finish_tag_only_retry() {
 
 build_candidate_if_needed() {
   if $RELEASE_BUILD_REQUIRED; then
-    # --- BEGIN service.https ---
-    frontend_build
-    frontend_hash_assets
-    # --- END service.https ---
     if [[ "$BUILD_KIND" == "dev" ]]; then
       printf "🟢 Skipping tests in dev mode\n"
     else

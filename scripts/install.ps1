@@ -72,21 +72,11 @@ $LifecycleLockFile = Join-Path $ControlDir "lifecycle.lock"
 $StateFile = Join-Path $ControlDir "state.json"
 $CachedInstaller = Join-Path $MaintenanceDir "install.ps1"
 $CachedInstallerBundle = Join-Path $MaintenanceDir "install.ps1.cosign.bundle"
-# --- BEGIN update ---
 $ReleaseUrlFile = Join-Path $MaintenanceDir "release-url"
-# --- END update ---
 $CosignDir = Join-Path (Join-Path $LocalAppData "Programs") "cosign"
 $CosignBin = Join-Path $CosignDir "cosign.exe"
 $LockTimeoutSeconds = 300
 $ServiceReadyTimeoutSeconds = 90
-# --- BEGIN service ---
-$ServiceStopLease = Join-Path $ControlDir "service.stop"
-# Keep this protocol duration in sync with ServiceStopLeaseDuration in Go.
-$ServiceStopLeaseSeconds = 60
-$ServiceGracefulStopTimeoutSeconds = 15
-$ServiceForcedStopTimeoutSeconds = 30
-$ServiceStopPollMilliseconds = 250
-# --- END service ---
 
 $TempDir = $null
 $OperationLockStream = $null
@@ -126,11 +116,9 @@ $CachedInstallerExisted = $false
 $OldCachedInstaller = $null
 $CachedInstallerBundleExisted = $false
 $OldCachedInstallerBundle = $null
-# --- BEGIN update ---
 $OldReleaseUrl = $null
 $ReleaseUrlExisted = $false
 $ReleaseUrlChanged = $false
-# --- END update ---
 
 function Write-Step {
     param([Parameter(Mandatory = $true)][string]$Message)
@@ -840,198 +828,8 @@ function Remove-OwnedDirectory {
     }
 }
 
-# --- BEGIN service ---
-function Test-AppTaskStopped {
-    $state = Get-TaskState
-    return ($null -eq $state -or $state -eq "Ready" -or $state -eq "Disabled")
-}
 
-function Test-AppTaskActive {
-    return (-not (Test-AppTaskStopped))
-}
 
-function Write-ServiceStopLease {
-    New-Item -ItemType Directory -Path $ControlDir -Force | Out-Null
-    $expires = [DateTimeOffset]::UtcNow.AddSeconds($ServiceStopLeaseSeconds).ToUnixTimeMilliseconds()
-    [IO.File]::WriteAllText(
-        $ServiceStopLease,
-        $expires.ToString([Globalization.CultureInfo]::InvariantCulture) + "`n"
-    )
-}
-
-function Clear-ServiceStopLease {
-    if (Test-Path -LiteralPath $ServiceStopLease -PathType Leaf) {
-        [IO.File]::WriteAllText($ServiceStopLease, "0`n")
-    }
-}
-
-function Wait-AppTaskStopped {
-    param([Parameter(Mandatory = $true)][int]$TimeoutSeconds)
-
-    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
-    while ((Test-AppTaskActive) -and [DateTime]::UtcNow -lt $deadline) {
-        Start-Sleep -Milliseconds $ServiceStopPollMilliseconds
-    }
-    return (-not (Test-AppTaskActive))
-}
-
-function Get-TaskState {
-    $task = Get-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue
-    if ($null -eq $task) {
-        return $null
-    }
-    return $task.State.ToString()
-}
-
-function Stop-AppTask {
-    if (-not (Test-AppTaskActive)) {
-        Clear-ServiceStopLease
-        return
-    }
-
-    $leaseWritten = $false
-    try {
-        try {
-            Write-Step "Requesting graceful shutdown of scheduled task '$TaskName' ..."
-            Write-ServiceStopLease
-            $leaseWritten = $true
-        } catch {
-            Write-Warning "Could not write the graceful stop request; using Task Scheduler fallback. Detail: $($_.Exception.Message)"
-        }
-
-        if ($leaseWritten -and (Wait-AppTaskStopped -TimeoutSeconds $ServiceGracefulStopTimeoutSeconds)) {
-            Write-Step "Scheduled task '$TaskName' stopped gracefully."
-            return
-        }
-
-        if (Test-AppTaskActive) {
-            Write-Step "Graceful shutdown timed out; forcing scheduled task '$TaskName' to stop ..."
-            try {
-                Stop-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction Stop
-            } catch {
-                if (Test-AppTaskActive) {
-                    throw
-                }
-            }
-        }
-        if (-not (Wait-AppTaskStopped -TimeoutSeconds $ServiceForcedStopTimeoutSeconds)) {
-            throw "Scheduled task '$TaskName' did not stop."
-        }
-    } finally {
-        Clear-ServiceStopLease
-    }
-}
-
-# Registers (or replaces) the per-user logon task with the logged-in user's
-# interactive token. The service's automatic update checker needs that token's
-# network access. The direct app action avoids a visible PowerShell wrapper,
-# stores no password, and retains a limited run level.
-function Register-AppTask {
-    $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
-    $action = New-ScheduledTaskAction -Execute $AppBin -Argument $ServiceArgs.Trim() -WorkingDirectory $DataDir
-    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $currentUser
-    $settings = New-ScheduledTaskSettingsSet `
-        -AllowStartIfOnBatteries `
-        -DontStopIfGoingOnBatteries `
-        -ExecutionTimeLimit ([TimeSpan]::Zero) `
-        -RestartCount 3 `
-        -RestartInterval (New-TimeSpan -Minutes 1) `
-        -MultipleInstances IgnoreNew
-
-    $principal = New-ScheduledTaskPrincipal `
-        -UserId $currentUser `
-        -LogonType Interactive `
-        -RunLevel Limited
-    Register-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -Action $action -Trigger $trigger `
-        -Settings $settings -Principal $principal -Description $ServiceDescription -Force | Out-Null
-    $script:TaskChanged = $true
-}
-# --- END service ---
-
-# --- BEGIN service.https ---
-function Test-TcpPortInUse {
-    param([Parameter(Mandatory = $true)][int]$Port)
-
-    # Match Go's wildcard TCP listener with one dual-stack, exclusive bind.
-    # This checks ownership rather than connecting to an unrelated service.
-    $listener = New-Object Net.Sockets.TcpListener([Net.IPAddress]::IPv6Any, $Port)
-    try {
-        $listener.Server.DualMode = $true
-        $listener.Server.ExclusiveAddressUse = $true
-        $listener.Start()
-        return $false
-    } catch {
-        $cause = $_.Exception.GetBaseException()
-        if ($cause -is [Net.Sockets.SocketException] -and
-            $cause.SocketErrorCode -eq [Net.Sockets.SocketError]::AddressAlreadyInUse) {
-            return $true
-        }
-        throw "Failed to check TCP port $Port availability: $($cause.Message)"
-    } finally {
-        $listener.Stop()
-    }
-}
-
-function Test-TcpReady {
-    param(
-        [Parameter(Mandatory = $true)][string]$HostName,
-        [Parameter(Mandatory = $true)][int]$Port
-    )
-
-    $client = New-Object Net.Sockets.TcpClient
-    try {
-        $result = $client.BeginConnect($HostName, $Port, $null, $null)
-        if (-not $result.AsyncWaitHandle.WaitOne(500)) {
-            return $false
-        }
-        $client.EndConnect($result)
-        return $true
-    } catch {
-        return $false
-    } finally {
-        $client.Dispose()
-    }
-}
-# --- END service.https ---
-
-# --- BEGIN service ---
-function Wait-AppReady {
-    param(
-        [Parameter(Mandatory = $true)][int]$Port,
-        [Parameter(Mandatory = $true)][int]$TimeoutSeconds
-    )
-
-    $seenRunning = $false
-    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
-    do {
-        $state = Get-TaskState
-        if ($state -eq "Running") {
-            $seenRunning = $true
-            $ready = $true
-            # --- BEGIN service.https ---
-            $ready = (-not $FreshInstall) -or (Test-TcpReady -HostName "127.0.0.1" -Port $Port)
-            # --- END service.https ---
-            if ($ready) {
-                return
-            }
-        } elseif ($state -eq "Ready" -and $seenRunning) {
-            # task instance started, then exited
-            $target = "service readiness"
-            # --- BEGIN service.https ---
-            $target = "TCP $Port"
-            # --- END service.https ---
-            throw "Scheduled task '$TaskName' stopped before becoming ready on $target."
-        }
-        Start-Sleep -Milliseconds 500
-    } while ([DateTime]::UtcNow -lt $deadline)
-
-    $target = "service readiness"
-    # --- BEGIN service.https ---
-    $target = "TCP $Port readiness"
-    # --- END service.https ---
-    throw "Timed out waiting for scheduled task '$TaskName' and $target."
-}
-# --- END service ---
 
 function Assert-MaintenanceRequest {
     $expectedEpoch = ""
@@ -1155,12 +953,6 @@ function Invoke-Uninstall {
         -ExpectedExecutable $AppBin `
         -GraceSeconds 15
 
-    # --- BEGIN service ---
-    if ($TaskExisted) {
-        $script:ServiceTouched = $true
-        Stop-AppTask
-    }
-    # --- END service ---
 
     # Revalidate after the service controller ran, then force any remaining
     # CLI or unmanaged service process before taking lifecycle exclusivity.
@@ -1177,16 +969,6 @@ function Invoke-Uninstall {
     $script:LifecycleLockHeld = $true
     Clear-MarkerFiles -MarkersPath $InstancesDir
 
-    # --- BEGIN service ---
-    if ($TaskExisted) {
-        Write-Step "Removing scheduled task '$TaskName' ..."
-        Unregister-ScheduledTask `
-            -TaskPath $TaskPath `
-            -TaskName $TaskName `
-            -Confirm:$false `
-            -ErrorAction Stop
-    }
-    # --- END service ---
 
     Write-Step "Removing application PATH entry ..."
     Remove-UserPathEntry -Directory $AppDir
@@ -1221,15 +1003,6 @@ function Rollback-Install {
     $rollbackErrors = New-Object System.Collections.Generic.List[string]
     Write-Warning "Installation failed; rolling back changes..."
 
-    # --- BEGIN service ---
-    if ($ServiceTouched) {
-        try {
-            Stop-AppTask
-        } catch {
-            $rollbackErrors.Add("stop task: $($_.Exception.Message)")
-        }
-    }
-    # --- END service ---
 
     try {
         if ($BinaryChanged) {
@@ -1246,23 +1019,7 @@ function Rollback-Install {
         $rollbackErrors.Add("binary: $($_.Exception.Message)")
     }
 
-    # --- BEGIN service ---
-    if ($ServiceTouched) {
-        try {
-            if ($TaskChanged) {
-                if ($TaskExisted -and $null -ne $TaskSnapshotXml) {
-                    Register-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -Xml $TaskSnapshotXml -Force | Out-Null
-                } elseif (-not $TaskExisted) {
-                    Unregister-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
-                }
-            }
-        } catch {
-            $rollbackErrors.Add("scheduled task: $($_.Exception.Message)")
-        }
-    }
-    # --- END service ---
 
-    # --- BEGIN update ---
     try {
         if ($ReleaseUrlChanged) {
             if ($ReleaseUrlExisted -and $null -ne $OldReleaseUrl) {
@@ -1274,7 +1031,6 @@ function Rollback-Install {
     } catch {
         $rollbackErrors.Add("release-url: $($_.Exception.Message)")
     }
-    # --- END update ---
 
     try {
         if ($CachedInstallerChanged) {
@@ -1321,16 +1077,6 @@ function Rollback-Install {
         $rollbackErrors.Add("lifecycle lock: $($_.Exception.Message)")
     }
 
-    # --- BEGIN service ---
-    if ($ServiceTouched -and $TaskExisted -and $TaskWasRunning -and -not $LifecycleLockHeld) {
-        try {
-            Clear-ServiceStopLease
-            Start-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName
-        } catch {
-            $rollbackErrors.Add("restart task: $($_.Exception.Message)")
-        }
-    }
-    # --- END service ---
 
     if ($FreshInstall) {
         try {
@@ -1406,16 +1152,6 @@ try {
     }
     Assert-MaintenanceRequest
 
-    # --- BEGIN service ---
-    # Snapshot the existing scheduled task before either transaction mutates it.
-    $existingTask = Get-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue
-    if ($null -ne $existingTask) {
-        $TaskExisted = $true
-        $TaskWasRunning = ($existingTask.State.ToString() -eq "Running")
-        $TaskWasEnabled = [bool]$existingTask.Settings.Enabled
-        $TaskSnapshotXml = Export-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName
-    }
-    # --- END service ---
 
     if ($Uninstall) {
         Invoke-Uninstall
@@ -1436,9 +1172,6 @@ try {
     $releaseUrl = Normalize-ReleaseUrl -Url $releaseUrlSource
 
     $FreshInstall = ($null -eq $CurrentState -or $CurrentState.phase -ceq "uninstalled")
-    # --- BEGIN service ---
-    $FreshInstall = $FreshInstall -and (-not $TaskExisted)
-    # --- END service ---
 
     $TempDir = Join-Path ([IO.Path]::GetTempPath()) ("$AppName-install-" + [Guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Path $TempDir | Out-Null
@@ -1522,19 +1255,6 @@ try {
         throw "Staged candidate version '$($candidateBuildVars.version)' does not match signed version '$version'."
     }
     $defaultPort = 0
-    # --- BEGIN service.https ---
-    $defaultPort = [int]$candidateBuildVars.serviceDefaultPort
-    if ($defaultPort -le 0) {
-        throw "Staged candidate returned invalid serviceDefaultPort '$($candidateBuildVars.serviceDefaultPort)'."
-    }
-    # --- END service.https ---
-    # --- BEGIN service ---
-    # --- BEGIN service.https ---
-    if ($ServiceEnabled -eq "true" -and $FreshInstall -and (Test-TcpPortInUse -Port $defaultPort)) {
-        throw "Default port $defaultPort is already in use. Free the port, then run the installer again."
-    }
-    # --- END service.https ---
-    # --- END service ---
 
     # Publish the fail-closed transition before asking existing processes to
     # drain. New processes reject it; existing Go processes poll it and cancel.
@@ -1546,12 +1266,6 @@ try {
         -ExpectedExecutable $AppBin `
         -GraceSeconds 15
 
-    # --- BEGIN service ---
-    if ($TaskExisted) {
-        $ServiceTouched = $true
-        Stop-AppTask
-    }
-    # --- END service ---
 
     New-Item -ItemType Directory -Path $AppDir -Force | Out-Null
     Protect-OwnedDirectory `
@@ -1583,7 +1297,6 @@ try {
     }
     $BinaryChanged = $true
 
-    # --- BEGIN update ---
     # Persist the effective source, including mirror overrides, in the same
     # rollback transaction as the binary and service definition.
     if (Test-Path -LiteralPath $ReleaseUrlFile -PathType Leaf) {
@@ -1593,7 +1306,6 @@ try {
     Write-Step "Writing release source to $ReleaseUrlFile ..."
     $ReleaseUrlChanged = $true
     [IO.File]::WriteAllText($ReleaseUrlFile, $releaseUrl + "`n")
-    # --- END update ---
 
     # Cache the independently signed controller beside retained maintenance
     # state. Publish the bundle first so a crash never exposes a new script
@@ -1612,22 +1324,6 @@ try {
     Publish-FileAtomically -Source $installerBundlePath -Destination $CachedInstallerBundle
     Publish-FileAtomically -Source $installerPath -Destination $CachedInstaller
 
-    # --- BEGIN service ---
-    # Register the new service definition before migration so all installed
-    # state crosses the point of no return together.
-    if ($ServiceEnabled -eq "true") {
-        $ServiceTouched = $true
-        if ($TaskExisted) {
-            Write-Step "Updating scheduled task '$TaskName' ..."
-        } else {
-            Write-Step "Registering logon scheduled task '$TaskName' ..."
-        }
-        Register-AppTask
-        if ($TaskExisted -and -not $TaskWasEnabled) {
-            Disable-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName | Out-Null
-        }
-    }
-    # --- END service ---
 
     Write-Step "Verifying installation (this may take a few moments if migrating) ..."
     $hadMigrationNonce = Test-Path -LiteralPath "Env:\APP_MAINTENANCE_NONCE"
@@ -1665,22 +1361,6 @@ try {
         -InstallationEpoch $InstallationEpoch
     Release-LifecycleLock
 
-    # --- BEGIN service ---
-    if ($ServiceEnabled -eq "true") {
-        # Start only after releasing the exclusive migration lock.
-        if ($TaskExisted -and -not $TaskWasEnabled) {
-            Write-Step "Task updated; leaving it disabled."
-        } elseif ($TaskExisted -and -not $TaskWasRunning -and
-            -not ($RecoveringTransition -and $TaskWasEnabled)) {
-            Write-Step "Task updated; leaving it stopped (was not running)."
-        } else {
-            Write-Step "Starting scheduled task '$TaskName' ..."
-            Clear-ServiceStopLease
-            Start-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName
-            Wait-AppReady -Port $defaultPort -TimeoutSeconds $ServiceReadyTimeoutSeconds
-        }
-    }
-    # --- END service ---
 
     Add-UserPath -Directories @($AppDir)
 
@@ -1691,15 +1371,6 @@ try {
     } else {
         Write-Host "Installed: $AppName ($effectiveVersion)"
     }
-    # --- BEGIN service ---
-    if ($ServiceEnabled -eq "true") {
-        Write-Host "Service:   scheduled task '$TaskName' (starts at logon, current user)"
-        # --- BEGIN service.https ---
-        Write-Host "Dashboard: https://localhost:$defaultPort"
-        # --- END service.https ---
-        Write-Host "Run:       $AppName service   # service management cheat sheet"
-    }
-    # --- END service ---
     Write-Host "Run:       $AppName -h          # help"
     Write-Host "Open a new terminal to pick up the updated PATH."
     }

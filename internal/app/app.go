@@ -11,20 +11,17 @@ import (
 	"sync"
 	"time"
 
-	"sprout/internal/build"
-	"sprout/internal/layout"
-	"sprout/internal/maintenance"
-	"sprout/internal/platform/database"
-	"sprout/internal/platform/database/config"
+	"github.com/Data-Corruption/Transplant/internal/build"
+	"github.com/Data-Corruption/Transplant/internal/layout"
+	"github.com/Data-Corruption/Transplant/internal/maintenance"
+	"github.com/Data-Corruption/Transplant/internal/platform/database"
+	"github.com/Data-Corruption/Transplant/internal/platform/database/config"
 
-	"sprout/internal/platform/release"
-	"sprout/internal/platform/secrets"
-	"sprout/internal/types"
-	"sprout/internal/ui"
-	"sprout/pkg/x"
-	"sprout/pkg/xhttp"
-	"sprout/pkg/xlog"
-	"sprout/pkg/xsyscall"
+	"github.com/Data-Corruption/Transplant/internal/platform/release"
+	"github.com/Data-Corruption/Transplant/internal/types"
+	"github.com/Data-Corruption/Transplant/pkg/x"
+	"github.com/Data-Corruption/Transplant/pkg/xlog"
+	"github.com/Data-Corruption/Transplant/pkg/xsyscall"
 
 	"github.com/urfave/cli/v3"
 	"golang.org/x/mod/semver"
@@ -38,20 +35,10 @@ type App struct {
 	DB  *sql.DB
 	Log *xlog.Logger
 
-	// --- BEGIN service.https ---
-	Server      *xhttp.Server
-	ProxyServer *xhttp.Server
-	Secrets     *secrets.Store
-	UI          *ui.UI
-	BaseURL     string
-	// --- END service.https ---
-
 	UserAgent string
 	Layout    layout.Layout
 
-	// --- BEGIN update ---
 	ReleaseSource release.ReleaseSource
-	// --- END update ---
 
 	// DevMode is baked into local development builds. Its storage and lifecycle
 	// state are isolated from production installations.
@@ -69,15 +56,7 @@ type App struct {
 	// maintenanceAdmitted bounds the runner's startup grace in ProbeJob.
 	maintenanceAdmitted time.Time
 
-	// --- BEGIN update ---
 	updateCheckMu sync.Mutex
-	// --- END update ---
-	// --- BEGIN service ---
-	// serviceStopLease is the Windows stop lease this process wrote, if any.
-	// Unused on Unix, where SIGTERM is the cooperative stop.
-	serviceStopMu    sync.Mutex
-	serviceStopLease []byte
-	// --- END service ---
 	// Commands should treat cancellation as a request to stop blocking work and
 	// return promptly.
 	Context context.Context
@@ -148,7 +127,6 @@ func (a *App) Init(ctx context.Context, cmd *cli.Command) (context.Context, erro
 	}
 	a.AddCleanup(func() error {
 		var stateErr error
-		// --- BEGIN update.apply ---
 		if !migrator {
 			if _, err := config.Update(a.DB, func(cfg *types.Configuration) error {
 				cfg.LastShutdownVersion = a.buildInfo.Version
@@ -157,7 +135,6 @@ func (a *App) Init(ctx context.Context, cmd *cli.Command) (context.Context, erro
 				stateErr = fmt.Errorf("record last shutdown version: %w", err)
 			}
 		}
-		// --- END update.apply ---
 		return errors.Join(stateErr, a.DB.Close())
 	})
 	a.Log.Debug("Database initialized")
@@ -181,9 +158,7 @@ func (a *App) Init(ctx context.Context, cmd *cli.Command) (context.Context, erro
 
 	ctx = xlog.IntoContext(ctx, a.Log)
 	a.Context = ctx
-	// --- BEGIN update ---
 	a.ReleaseSource = &release.GenericReleaseSource{UserAgent: a.UserAgent}
-	// --- END update ---
 	return ctx, nil
 }
 

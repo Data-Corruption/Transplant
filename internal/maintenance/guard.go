@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"sprout/internal/layout"
-	"sprout/pkg/xsyscall"
+	"github.com/Data-Corruption/Transplant/internal/layout"
+	"github.com/Data-Corruption/Transplant/pkg/xsyscall"
 )
 
 const (
