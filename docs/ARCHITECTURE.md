@@ -63,3 +63,9 @@ previews CLI/manual to check transitive automatic-feature removal. CI obtains
 Sprout main and gates publication on this canary alongside the inherited
 Windows and lifecycle jobs. Sprout's own cut matrix owns exhaustive source-shape
 coverage; its lifecycle harness owns mirror and update transaction behavior.
+
+The Linux E2E and release jobs each provision Incus through the shared
+`setup-incus` action on Ubuntu 24.04. The release job tests changed installers
+against the staged release (and the current release, when present) before
+publishing the installers or promoting the version. Jobs have separate runners,
+so the earlier E2E job's daemon is not available during publication.
