@@ -50,6 +50,14 @@ admits a verified detached installer; it does not replace its own executable.
 Migration remains restricted to the installer's authorized `--migrate` path.
 The precise protocol is in [the maintenance notes](MAINTENANCE.md).
 
+## Release publication
+
+`RELEASE_URL="https://releases.sproutcli.dev/transplant/"` in `scripts/build.sh`
+sets both the public download root and the `transplant/` object prefix inside
+`R2_BUCKET`. Installers, `version`, `releases/`, publisher state (`.state/`),
+and installer staging (`.staging/`) all live under that prefix. Recovery and
+retention are scoped to it as well; `R2_BUCKET` remains just the bucket name.
+
 ## Verification
 
 `./scripts/test.sh` runs the race-enabled Go suite. Wizard tests cover feature
