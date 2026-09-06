@@ -1430,5 +1430,5 @@ if (-not $Succeeded) {
     exit 1
 }
 
+# Complete normally so Invoke-Expression leaves the caller's shell open.
 $Error.Clear()
-exit 0
