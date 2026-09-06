@@ -703,12 +703,17 @@ http.server.ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), handler).serve_
     Remove-Item Env:APP_MAINTENANCE_EXPECT_EPOCH -ErrorAction SilentlyContinue
     Remove-Item Env:APP_MAINTENANCE_EXPECT_VERSION -ErrorAction SilentlyContinue
     $savedErrorActionPreference = $ErrorActionPreference
+    $savedOutputEncoding = $OutputEncoding
     try {
         $ErrorActionPreference = "Continue"
+        # Windows PowerShell can prepend a UTF-8 BOM to native stdin. The
+        # confirmation must contain only the answer, independent of the caller.
+        $OutputEncoding = New-Object Text.UTF8Encoding($false)
         $uninstallDetail = ("y" | & $InstalledBin uninstall 2>&1 | Out-String).Trim()
         $uninstallExitCode = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $savedErrorActionPreference
+        $OutputEncoding = $savedOutputEncoding
     }
     if ($uninstallExitCode -ne 0 -or $uninstallDetail -notmatch "Uninstall accepted") {
         throw "Detached offline uninstall was not admitted (exit $uninstallExitCode):`n$uninstallDetail"
