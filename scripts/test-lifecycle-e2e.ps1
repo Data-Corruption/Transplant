@@ -540,7 +540,9 @@ http.server.ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), handler).serve_
     }
     $nextPointer = Join-Path $NewerReleaseRoot "version.next"
     [IO.File]::WriteAllText($nextPointer, $NewerVersion + "`n")
-    [IO.File]::Replace($nextPointer, (Join-Path $NewerReleaseRoot "version"), $null)
+    # PowerShell converts $null to an empty string for this .NET parameter;
+    # pass a real null string so Replace does not try to use an empty backup path.
+    [IO.File]::Replace($nextPointer, (Join-Path $NewerReleaseRoot "version"), [NullString]::Value)
     Remove-Item Env:APP_MAINTENANCE_EXPECT_EPOCH -ErrorAction SilentlyContinue
     Remove-Item Env:APP_MAINTENANCE_EXPECT_VERSION -ErrorAction SilentlyContinue
     $detachedOut = Join-Path $Temp "detached-update.out"
