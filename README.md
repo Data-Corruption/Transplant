@@ -1,17 +1,15 @@
-# transplant
+# Transplant
 
-Give a fresh [Sprout](https://sproutcli.dev/) checkout its own home. Transplant
-asks what you're building, runs that checkout's own cutter, fills in the project
-settings, tidies the inherited docs, tests and builds the result, and offers a
-setup commit. No GitHub token, cloning, or second templating engine involved.
+Transplant is a CLI wizard / generator for setting up
+[Sprout](https://sproutcli.dev/) apps. After using the Sprout template and
+cloning to your machine, run this in your clone's root and It will automate the
+setup process.
 
-It's also a working Sprout app: per-user installation, signed updates, and the
-same release pipeline that your generated app can use.
+It's also a working example of an app built using Sprout.
 
-## Run it
+## Usage
 
 Install on Linux or in WSL:
-
 ```sh
 curl -fsSL https://releases.sproutcli.dev/transplant/install.sh | sh
 ```
@@ -24,13 +22,10 @@ transplant
 ```
 
 Development needs Linux or WSL, Git, Bash, curl, GCC for the race tests, and Go
-at least as new as the version in that checkout's `go.mod`. Windows binaries
-still ship as part of the deployed Sprout example; the setup wizard points you
-to WSL. Installer, config, update, and uninstall commands work on Windows.
+=> the version in `go.mod`. Windows binaries still ship for the sake of this
+being a good Sprout example.
 
-Run `transplant update` to check for and apply a signed update. Background
-checks start disabled for Transplant; `transplant update --background=true`
-opts in.
+Run `transplant update` to check for and apply updates.
 
 ## Script it
 
@@ -64,10 +59,11 @@ database, and these update choices never change Transplant's own preferences.
 | `--preview` | Print the plan without edits, a branch, tests, or a commit |
 | `--skip-verify` | Skip the generated project's tests and dev build |
 
-`--update=none` leaves updates to the installer. `check` retains discovery and
-notices, `manual` also supports applying on request, and `auto` adds unattended
-application. Auto needs a service and is initially disabled in the generated
-app; its operator can enable it with `<app> update --automatic=true`.
+`--update=none` leaves updates to re-running the installer. `check` retains
+discovery and notices, `manual` also supports applying on request, and `auto`
+adds unattended application. Auto needs a service and is initially disabled in
+the generated app; its operator can enable it with
+`<app> update --automatic=true`.
 
 Markdown-only docs keeps `docs/content/docs/**` and `docs/MAINTENANCE.md` and
 removes everything else under `docs/`. README gets a short stub; CONTRIBUTING
@@ -82,20 +78,16 @@ or the build fail after the cut, fix the generated project and rerun
 `./scripts/test.sh` and `./scripts/build.sh`; the cutter has already removed
 itself, so rerunning Transplant isn't a repair path.
 
-Keep the suggested setup commit message: it records the template-copy HEAD as
-`Data-Corruption/Sprout@<sha>`. With GitHub's template button this is your copy's
-initial commit, not necessarily a commit in upstream Sprout's history.
-
 ## Working on Transplant
 
 See [AGENTS.md](AGENTS.md), [the architecture notes](docs/ARCHITECTURE.md), and
-[the maintenance protocol](docs/MAINTENANCE.md). The [Sprout guide](https://sproutcli.dev/docs/getting-started/)
-covers the template and its release system.
+[the maintenance protocol](docs/MAINTENANCE.md). For everything else see the
+[docs](https://sproutcli.dev/docs/).
 
 ```sh
 ./scripts/test.sh
-# Test pending changes in both sibling repos, or point at a clean Sprout clone:
-TRANSPLANT_SPROUT=../Sprout go test ./internal/transplant \
+# Test pending changes using a clean Sprout clone:
+TRANSPLANT_SPROUT=path/to/sprout/clone go test ./internal/transplant \
   -run '^TestSproutCompatibility$' -v -count=1 -timeout=25m
 ```
 
@@ -104,4 +96,4 @@ and headless/manual trees. CI runs it against Sprout main and requires it before
 release. Sprout must support `scripts/cut --list-features-json` contract version
 1; older or unfamiliar templates are refused before any checkout edits.
 
-[MIT](LICENSE.md). Built with love and a little dirt under the fingernails <3
+[MIT](LICENSE.md)
