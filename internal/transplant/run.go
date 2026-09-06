@@ -335,7 +335,7 @@ func (w *Wizard) Run(ctx context.Context, o Options) (runErr error) {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(w.Out, "let's give this Sprout its own home :)")
+	fmt.Fprintln(w.Out, "Let's plant your Sprout!")
 	if !o.Yes && !o.Set["branch"] && !o.Preview {
 		o.Branch, err = w.confirm(ctx, "make a setup branch? it's your uh oh button", true)
 		if err != nil {

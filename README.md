@@ -7,19 +7,27 @@ setup process.
 
 It's also a working example of an app built using Sprout.
 
-## Usage
+## Quick start
 
-Install on Linux or in WSL:
+Install Transplant on Linux or in WSL:
+
 ```sh
 curl -fsSL https://releases.sproutcli.dev/transplant/install.sh | sh
 ```
 
-Then use [Sprout as a GitHub template](https://github.com/Data-Corruption/Sprout/generate)
-and clone your new repository. From its clean checkout root:
+Use [Sprout as a GitHub template](https://github.com/Data-Corruption/Sprout/generate),
+then clone your new repo and run the wizard:
 
 ```sh
+git clone https://github.com/YOU/YOUR_APP.git
+cd YOUR_APP
 transplant
 ```
+
+It walks you through features and project settings, previews the cut, and tests
+and builds the result. The [getting started guide](https://sproutcli.dev/docs/getting-started/)
+covers the next steps and the manual setup path. For more wizard options, see
+[Transplant's README](https://github.com/Data-Corruption/Transplant#script-it).
 
 Development needs Linux or WSL, Git, Bash, curl, GCC for the race tests, and Go
 => the version in `go.mod`. Windows binaries still ship for the sake of this
