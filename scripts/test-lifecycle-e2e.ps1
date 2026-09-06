@@ -152,6 +152,28 @@ function Invoke-Installer {
     }
 }
 
+function Invoke-ConfirmedUninstall {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Directory
+    )
+
+    $stdin = Join-Path $Directory "detached-uninstall.in"
+    $stdout = Join-Path $Directory "detached-uninstall.out"
+    $stderr = Join-Path $Directory "detached-uninstall.err"
+    # Windows PowerShell's native pipeline can prepend a BOM from Console's
+    # input encoding even when OutputEncoding is BOM-free. Redirect exact bytes.
+    [IO.File]::WriteAllBytes($stdin, [byte[]](0x79, 0x0a)) # y + newline
+    $process = Start-Process -FilePath $Path -ArgumentList "uninstall" `
+        -RedirectStandardInput $stdin -RedirectStandardOutput $stdout `
+        -RedirectStandardError $stderr -PassThru -Wait
+    $detail = ((Get-Content -LiteralPath $stdout, $stderr -Encoding UTF8) -join "`n").Trim()
+    return [PSCustomObject]@{
+        ExitCode = $process.ExitCode
+        Detail = $detail
+    }
+}
+
 function Read-LifecycleState {
     if (-not (Test-Path -LiteralPath $StateFile -PathType Leaf)) {
         throw "Lifecycle state is missing: $StateFile"
@@ -702,21 +724,9 @@ http.server.ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), handler).serve_
     $Server = $null
     Remove-Item Env:APP_MAINTENANCE_EXPECT_EPOCH -ErrorAction SilentlyContinue
     Remove-Item Env:APP_MAINTENANCE_EXPECT_VERSION -ErrorAction SilentlyContinue
-    $savedErrorActionPreference = $ErrorActionPreference
-    $savedOutputEncoding = $OutputEncoding
-    try {
-        $ErrorActionPreference = "Continue"
-        # Windows PowerShell can prepend a UTF-8 BOM to native stdin. The
-        # confirmation must contain only the answer, independent of the caller.
-        $OutputEncoding = New-Object Text.UTF8Encoding($false)
-        $uninstallDetail = ("y" | & $InstalledBin uninstall 2>&1 | Out-String).Trim()
-        $uninstallExitCode = $LASTEXITCODE
-    } finally {
-        $ErrorActionPreference = $savedErrorActionPreference
-        $OutputEncoding = $savedOutputEncoding
-    }
-    if ($uninstallExitCode -ne 0 -or $uninstallDetail -notmatch "Uninstall accepted") {
-        throw "Detached offline uninstall was not admitted (exit $uninstallExitCode):`n$uninstallDetail"
+    $uninstall = Invoke-ConfirmedUninstall -Path $InstalledBin -Directory $Temp
+    if ($uninstall.ExitCode -ne 0 -or $uninstall.Detail -notmatch "Uninstall accepted") {
+        throw "Detached offline uninstall was not admitted (exit $($uninstall.ExitCode)):`n$($uninstall.Detail)"
     }
     $deadline = [DateTime]::UtcNow.AddMinutes(3)
     do {
